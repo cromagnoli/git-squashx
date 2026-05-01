@@ -49,7 +49,7 @@ curl -sSL https://raw.githubusercontent.com/cromagnoli/git-squashx/main/git-squa
 ## Usage
 
 ```bash
-git squashx --save    [base-branch] ["message"]    # -s
+git squashx --save    [base-branch] ["message"]   # -s
 git squashx --peek    [squash-id | sha]            # -p
 git squashx --restore [squash-id | sha]            # -r
 git squashx --list    [--branch <name>]            # -l
@@ -61,12 +61,12 @@ git squashx --help                                 # -h
 ```bash
 # Illustrative — your commits might look like this
 git log --oneline main..HEAD
-# a6892db Fix edge case in parser
-# 5e1ef0c Add form validation
-# cbb603a Implement login form
+# a6892db fix edge case in parser
+# 5e1ef0c add form validation
+# cbb603a implement login form
 
 # 1. Squash and preserve originals
-git squashx --save "Feat: Implement login"
+git squashx --save "feat: implement login feature"
 
 # 2. Catchup — only one conflict to resolve if any
 git rebase main
@@ -78,14 +78,17 @@ git push --force-with-lease
 The resulting squash commit message looks like this:
 
 ```
-custom-squash-id: squash-backup/feature/login/20260501050621 – Feat: Implement login
+[SQ] feat: implement login feature
 
-cbb603a: Implement login form
-5e1ef0c: Add form validation
-a6892db: Fix edge case in parser
+Original commits:
+- cbb603a: implement login form
+- 5e1ef0c: add form validation
+- a6892db: fix edge case in parser
+
+custom-squash-id: squash-backup/feature/login/20260501050621
 ```
 
-The `custom-squash-id` prefix signals it's not a native Git field. The original SHAs are right there in the message so you can reference them without running any command.
+The `[SQ]` tag makes squash commits immediately recognizable in the log. The original SHAs are right there so you can reference them without running any command. The `custom-squash-id` at the bottom is local metadata used by `squashx` — it's not a native Git field.
 
 ## Commands
 
@@ -100,9 +103,9 @@ The base branch is resolved in this order:
 
 ```bash
 git squashx --save                                  # Auto-detects base branch, no message
-git squashx --save "Feat: Implement login"          # Auto-detects base branch, with message
+git squashx --save "feat: implement login"          # Auto-detects base branch, with message
 git squashx --save main                             # Explicit base, no message
-git squashx --save main "Feat: Implement login"     # Explicit base, with message
+git squashx --save main "feat: implement login"     # Explicit base, with message
 ```
 
 If your branch has no upstream configured and you don't pass a base branch explicitly, `squashx` will exit with a clear error and tell you what to do.

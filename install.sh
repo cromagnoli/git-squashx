@@ -87,8 +87,8 @@ check_path() {
     *":${_dir}:"*) return 0 ;;
   esac
   echo ""
-  yellow "Note: $_dir is not in your PATH."
-  echo "  Add this to $_profile:"
+  yellow "note: $_dir is not in your PATH."
+  echo "  add this to $_profile:"
   echo ""
   printf '    export PATH="%s:$PATH"\n' "$_dir"
   echo ""

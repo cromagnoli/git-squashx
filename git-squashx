@@ -52,20 +52,20 @@ cmd_help() {
   echo ""
   bold "options:"
   echo ""
-  printf "  %-20s %s\n" "--save,    -s" "Squash commits and tag originals (auto-detects base branch)"
-  printf "  %-20s %s\n" "--peek,    -p" "Inspect original commits of a squash"
-  printf "  %-20s %s\n" "--restore, -r" "Recreate original commits as a new branch"
-  printf "  %-20s %s\n" "--list,    -l" "List all saved squashes"
-  printf "  %-20s %s\n" "--help,    -h" "Show this help"
+  printf "  %-20s %s\n" "--save,    -s" "squash commits and tag originals (auto-detects base branch)"
+  printf "  %-20s %s\n" "--peek,    -p" "inspect original commits of a squash"
+  printf "  %-20s %s\n" "--restore, -r" "recreate original commits as a new branch"
+  printf "  %-20s %s\n" "--list,    -l" "list all saved squashes"
+  printf "  %-20s %s\n" "--help,    -h" "show this help"
   echo ""
   bold "examples:"
   echo ""
   echo "  git squashx --save \"feat: implement login\"          # auto-detects base branch"
   echo "  git squashx --save main \"feat: implement login\"     # explicit base branch"
-  echo "  git squashx --save                                    # auto-detects, no message"
-  echo "  git squashx --peek                                    # peeks at HEAD squash"
-  echo "  git squashx --peek 7b60cd2                            # peek by SHA"
-  echo "  git squashx --restore 7b60cd2                         # restore by SHA"
+  echo "  git squashx --save                                   # auto-detects, no message"
+  echo "  git squashx --peek                                   # peeks at HEAD squash"
+  echo "  git squashx --peek 7b60cd2                          # peek by SHA"
+  echo "  git squashx --restore 7b60cd2                       # restore by SHA"
   echo "  git squashx --list --branch feature/login"
   echo ""
   bold "commit message format:"
@@ -81,9 +81,10 @@ cmd_help() {
 # ── shared: resolve squash-id from SHA or tag ─────────────────────────────────
 
 resolve_squash_id_from_commit() {
+  # custom-squash-id can appear anywhere in the commit message
   git log -1 --format="%B" "$1" \
-    | grep "^custom-squash-id:" \
-    | sed 's/^custom-squash-id: //' \
+    | grep "custom-squash-id:" \
+    | sed 's/.*custom-squash-id: //' \
     | awk '{print $1}' \
     || true
 }
@@ -96,7 +97,7 @@ resolve_squash_id() {
       ;;
     *)
       git rev-parse --verify "$_arg" >/dev/null 2>&1 \
-        || die "Not a valid SHA or squash-id: $_arg"
+        || die "not a valid SHA or squash-id: $_arg"
       _id=$(resolve_squash_id_from_commit "$_arg")
       [ -n "$_id" ] || die "'$_arg' is not a squash commit (no custom-squash-id found in message)"
       echo "$_id"
@@ -156,27 +157,27 @@ cmd_save() {
   if [ -z "$BASE_BRANCH" ]; then
     BASE_BRANCH=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null | sed "s|origin/||") || true
     if [ -z "$BASE_BRANCH" ]; then
-      die "Could not detect base branch automatically.
-Your branch has no upstream tracking branch configured.
-Pass it explicitly: git squashx --save <base-branch> ["message"]
+      die "could not detect base branch automatically.
+your branch has no upstream tracking branch configured.
+pass it explicitly: git squashx --save <base-branch> ["message"]
 example: git squashx --save main "feat: my feature""
     fi
     blue "-> detected base branch: $BASE_BRANCH"
   fi
 
   git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1 \
-    || die "Base branch '$BASE_BRANCH' not found locally. Fetch it first."
+    || die "base branch '$BASE_BRANCH' not found locally. fetch it first."
 
   [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ] \
-    || die "You are already on '$BASE_BRANCH'. Checkout your feature branch first."
+    || die "you are already on '$BASE_BRANCH'. checkout your feature branch first."
 
   COMMITS=$(git log --reverse --format="%H" "$BASE_BRANCH"..HEAD)
   COMMIT_COUNT=$(printf '%s\n' "$COMMITS" | grep -c . || true)
 
-  [ "$COMMIT_COUNT" -gt 0 ] || die "No commits found between '$BASE_BRANCH' and HEAD"
-  [ "$COMMIT_COUNT" -gt 1 ] || die "Only 1 commit found — nothing to squash"
+  [ "$COMMIT_COUNT" -gt 0 ] || die "no commits found between '$BASE_BRANCH' and HEAD"
+  [ "$COMMIT_COUNT" -gt 1 ] || die "only 1 commit found — nothing to squash"
 
-  blue "-> Found $COMMIT_COUNT commits to squash on '$CURRENT_BRANCH'"
+  blue "-> found $COMMIT_COUNT commits to squash on '$CURRENT_BRANCH'"
   echo ""
 
   SQUASH_ID="${TAG_PREFIX}/${CURRENT_BRANCH}/${TIMESTAMP}"
@@ -198,19 +199,29 @@ date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   SQUASH_MSG_FILE=$(mktemp)
 
+  # Build commit message:
+  # [SQ] <custom message>
+  #
+  # Original commits:
+  # - <sha>: <message>
+  # ...
+  #
+  # custom-squash-id: <squash-id>
   if [ -n "$CUSTOM_MSG" ]; then
-    printf 'custom-squash-id: %s - %s\n' "$SQUASH_ID" "$CUSTOM_MSG" > "$SQUASH_MSG_FILE"
+    printf '[SQ] %s\n' "$CUSTOM_MSG" > "$SQUASH_MSG_FILE"
   else
-    printf 'custom-squash-id: %s\n' "$SQUASH_ID" > "$SQUASH_MSG_FILE"
+    printf '[SQ] squash of %s commits from %s\n' "$COMMIT_COUNT" "$CURRENT_BRANCH" > "$SQUASH_MSG_FILE"
   fi
 
-  printf '\n' >> "$SQUASH_MSG_FILE"
+  printf '\nOriginal commits:\n' >> "$SQUASH_MSG_FILE"
 
   printf '%s\n' "$COMMITS" | while IFS= read -r sha; do
     MSG=$(git log -1 --format="%s" "$sha")
     SHORT_SHA=$(git rev-parse --short "$sha")
-    printf '%s: %s\n' "$SHORT_SHA" "$MSG" >> "$SQUASH_MSG_FILE"
+    printf '%s\n' "- $SHORT_SHA: $MSG" >> "$SQUASH_MSG_FILE"
   done
+
+  printf '\ncustom-squash-id: %s\n' "$SQUASH_ID" >> "$SQUASH_MSG_FILE" 
 
   MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD)
   git reset --soft "$MERGE_BASE"
@@ -226,15 +237,15 @@ original-count: $COMMIT_COUNT
 original-tags: $TAG_LIST"
 
   echo ""
-  green "Done: Squash complete"
+  green "done: squash complete"
   echo ""
-  echo "  Squash sha : $SQUASH_SHA"
-  echo "  Squash ID  : $SQUASH_ID"
-  echo "  Originals  : $COMMIT_COUNT commits preserved as local tags"
+  echo "  squash sha : $SQUASH_SHA"
+  echo "  squash id  : $SQUASH_ID"
+  echo "  originals  : $COMMIT_COUNT commits preserved as local tags"
   echo ""
-  yellow "Next steps:"
+  yellow "next steps:"
   printf "  git rebase %s\n" "$BASE_BRANCH   # catchup with $BASE_BRANCH"
-  echo "  git squashx --peek $SQUASH_SHA     # inspect original commits"
+  echo "  git squashx --peek $SQUASH_SHA       # inspect original commits"
 }
 
 # ── peek ──────────────────────────────────────────────────────────────────────
@@ -243,15 +254,15 @@ cmd_peek() {
   SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
 
   git rev-parse --verify "refs/tags/$SQUASH_ID" >/dev/null 2>&1 \
-    || die "Squash tag not found: $SQUASH_ID
+    || die "squash tag not found: $SQUASH_ID
 run 'git squashx --list' to see all saved squashes."
 
   COMMIT_TAGS=$(find_commit_tags_for "$SQUASH_ID")
-  [ -n "$COMMIT_TAGS" ] || die "No original commit tags found for squash: $SQUASH_ID"
+  [ -n "$COMMIT_TAGS" ] || die "no original commit tags found for squash: $SQUASH_ID"
 
   COUNT=$(printf '%s\n' "$COMMIT_TAGS" | grep -c . || true)
 
-  bold "Squash: $SQUASH_ID"
+  bold "squash: $SQUASH_ID"
   echo ""
   blue "-> $COUNT original commits:"
   echo ""
@@ -286,28 +297,28 @@ cmd_restore() {
   SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
 
   git rev-parse --verify "refs/tags/$SQUASH_ID" >/dev/null 2>&1 \
-    || die "Squash tag not found: $SQUASH_ID"
+    || die "squash tag not found: $SQUASH_ID"
 
   ORIGINAL_BRANCH=$(git tag -l --format="%(contents)" "$SQUASH_ID" \
     | grep "^branch:" | awk '{print $2}' || true)
   BASE_BRANCH=$(git tag -l --format="%(contents)" "$SQUASH_ID" \
     | grep "^base:" | awk '{print $2}' || true)
 
-  [ -n "$ORIGINAL_BRANCH" ] || die "Could not read original branch from tag metadata"
+  [ -n "$ORIGINAL_BRANCH" ] || die "could not read original branch from tag metadata"
   [ -n "$BASE_BRANCH" ]     || BASE_BRANCH="staging"
 
   COMMIT_TAGS=$(find_commit_tags_for "$SQUASH_ID")
-  [ -n "$COMMIT_TAGS" ] || die "No original commit tags found for: $SQUASH_ID"
+  [ -n "$COMMIT_TAGS" ] || die "no original commit tags found for: $SQUASH_ID"
 
   COUNT=$(printf '%s\n' "$COMMIT_TAGS" | grep -c . || true)
   RESTORE_BRANCH="restore/${ORIGINAL_BRANCH}/$(date +%Y%m%d%H%M%S)"
 
-  blue "-> Restoring $COUNT commits onto '$BASE_BRANCH'"
-  yellow "  New branch: $RESTORE_BRANCH"
+  blue "-> restoring $COUNT commits onto '$BASE_BRANCH'"
+  yellow "  new branch: $RESTORE_BRANCH"
   echo ""
 
   git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1 \
-    || die "Base branch '$BASE_BRANCH' not found locally. fetch it first."
+    || die "base branch '$BASE_BRANCH' not found locally. fetch it first."
 
   git checkout -b "$RESTORE_BRANCH" "$BASE_BRANCH"
 
@@ -319,9 +330,9 @@ cmd_restore() {
 
     if ! git cherry-pick "$SHA" --allow-empty; then
       echo ""
-      red "Conflict during cherry-pick of commit $INDEX: $MSG"
+      red "conflict during cherry-pick of commit $INDEX: $MSG"
       echo ""
-      echo "Resolve the conflict, then run:"
+      echo "resolve the conflict, then run:"
       echo "  git cherry-pick --continue"
       exit 1
     fi
@@ -330,13 +341,13 @@ cmd_restore() {
   done
 
   echo ""
-  green "Done: Restore complete"
+  green "done: restore complete"
   echo ""
   echo "  branch  : $RESTORE_BRANCH"
   echo "  commits : $COUNT"
   echo ""
-  yellow "You are now on '$RESTORE_BRANCH'"
-  echo "To go back to your squashed branch:"
+  yellow "you are now on '$RESTORE_BRANCH'"
+  echo "to go back to your squashed branch:"
   echo "  git checkout $ORIGINAL_BRANCH"
 }
 
@@ -349,14 +360,14 @@ cmd_list() {
 
   if [ -z "$SQUASH_TAGS" ]; then
     echo ""
-    dim "  No squashes saved yet."
+    dim "  no squashes saved yet."
     echo ""
-    echo "  Run 'git squashx --save' on a feature branch to get started."
+    echo "  run 'git squashx --save' on a feature branch to get started."
     return
   fi
 
   echo ""
-  bold "Saved squashes:"
+  bold "saved squashes:"
   echo ""
 
   COUNT=0
@@ -383,7 +394,7 @@ cmd_list() {
   done
 
   if [ "$COUNT" -eq 0 ] && [ -n "$FILTER_BRANCH" ]; then
-    dim "  No squashes found for branch '$FILTER_BRANCH'"
+    dim "  no squashes found for branch '$FILTER_BRANCH'"
     echo ""
   fi
 }
@@ -404,6 +415,6 @@ case "$CMD" in
     ;;
   --help | -h) cmd_help ;;
   "")          cmd_help ;;
-  *) die "Unknown command: $CMD
-Run 'git squashx --help' for usage." ;;
+  *) die "unknown command: $CMD
+run 'git squashx --help' for usage." ;;
 esac
