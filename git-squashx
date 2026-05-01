@@ -153,14 +153,27 @@ cmd_save() {
   git diff --quiet && git diff --cached --quiet \
     || die "you have uncommitted changes. commit or stash them first."
 
-  # Resolve base branch: explicit arg or upstream tracking branch
+  # Resolve base branch: explicit arg, or detect by finding the branch
+  # with the most recent common ancestor with HEAD.
+  # We measure "most recent" by counting commits between the merge-base and HEAD —
+  # the branch with the fewest commits between its merge-base and HEAD is the closest.
   if [ -z "$BASE_BRANCH" ]; then
-    BASE_BRANCH=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null | sed "s|origin/||") || true
+    BASE_BRANCH=$(
+      git branch --format='%(refname:short)' \
+        | grep -v "^${CURRENT_BRANCH}$" \
+        | while IFS= read -r _branch; do
+            _base=$(git merge-base HEAD "$_branch" 2>/dev/null) || continue
+            _dist=$(git log --oneline "${_base}..HEAD" 2>/dev/null | grep -c . || true)
+            printf '%05d %s\n' "$_dist" "$_branch"
+          done \
+        | sort -n \
+        | head -1 \
+        | awk '{print $2}'
+    )
     if [ -z "$BASE_BRANCH" ]; then
       die "could not detect base branch automatically.
-your branch has no upstream tracking branch configured.
-pass it explicitly: git squashx --save <base-branch> ["message"]
-example: git squashx --save main "feat: my feature""
+pass it explicitly: git squashx --save <base-branch> \"message\"
+example: git squashx --save main \"feat: my feature\""
     fi
     blue "-> detected base branch: $BASE_BRANCH"
   fi
@@ -170,6 +183,16 @@ example: git squashx --save main "feat: my feature""
 
   [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ] \
     || die "you are already on '$BASE_BRANCH'. checkout your feature branch first."
+
+  # Check if branch is up to date with base (i.e. has been rebased)
+  BEHIND=$(git log "HEAD..${BASE_BRANCH}" --oneline 2>/dev/null | grep -c . || true)
+  if [ "$BEHIND" -gt 0 ]; then
+    die "your branch is not up to date with '$BASE_BRANCH'.
+'$BASE_BRANCH' has $BEHIND commit(s) that are not in your branch.
+rebase first, then squash:
+  git rebase $BASE_BRANCH
+  git squashx --save \"your message\""
+  fi
 
   COMMITS=$(git log --reverse --format="%H" "$BASE_BRANCH"..HEAD)
   COMMIT_COUNT=$(printf '%s\n' "$COMMITS" | grep -c . || true)
