@@ -241,7 +241,7 @@ cmd_save() {
   rm -f /tmp/sqhx_existing_squash
   if [ -n "$_existing_squash" ]; then
     die "commits on '$CURRENT_BRANCH' were already squashed before.
-  existing squash: $_existing_squash
+  existing squash tag: $_existing_squash
 
 did you mean to restore the originals first?
   git squashx --restore $_existing_squash
