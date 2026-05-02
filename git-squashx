@@ -505,34 +505,40 @@ run 'git squashx --list' to see all saved squashes."
   COMMIT_TAGS=$(find_commit_tags_for "$SQUASH_ID")
   COMMIT_COUNT=$(printf '%s\n' "$COMMIT_TAGS" | grep -c . || true)
 
+  # Fallback for squashes created before original-tip was recorded:
+  # find the most recently committed SHA among the per-commit tags.
+  if [ -z "$ORIGINAL_TIP" ] && [ -n "$COMMIT_TAGS" ]; then
+    _tip_tmp=$(mktemp)
+    printf '%s\n' "$COMMIT_TAGS" | while IFS= read -r _tag; do
+      _sha=$(git rev-parse "$_tag" 2>/dev/null) || continue
+      _date=$(git log -1 --format="%ct" "$_sha" 2>/dev/null) || continue
+      printf '%s %s\n' "$_date" "$_sha" >> "$_tip_tmp"
+    done
+    ORIGINAL_TIP=$(sort -rn "$_tip_tmp" | head -1 | awk '{print $2}')
+    rm -f "$_tip_tmp"
+  fi
+
   # Check if squash commit has been pushed to any remote
   _on_remote=$(git branch -r --contains "$SQUASH_SHA" 2>/dev/null | head -1 || true)
 
-  if [ -n "$_on_remote" ]; then
-    yellow "-> warning: squash commit has been pushed to remote (${_on_remote# })." >&2
-    echo "   resetting the branch would require a force push — skipping reset." >&2
-    echo "   deleting local tags only." >&2
-    echo ""
-  fi
-
-  # Delete per-commit tags
-  printf '%s\n' "$COMMIT_TAGS" | while IFS= read -r _tag; do
-    git tag -d "$_tag"
-  done
-
-  # Delete summary tag
-  git tag -d "$SQUASH_ID"
-
-  # Reset branch to original tip only if not pushed
+  # Validate branch ownership before any destructive action
   if [ -z "$_on_remote" ]; then
-    [ -n "$ORIGINAL_TIP" ] || die "original-tip not found in tag metadata.
-this squash was created with an older version of squashx — use --restore instead."
+    [ -n "$ORIGINAL_TIP" ] || die "could not determine original tip — tag metadata incomplete."
 
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
     [ "$CURRENT_BRANCH" = "$ORIGINAL_BRANCH" ] \
       || die "you are on '$CURRENT_BRANCH', but this squash belongs to '$ORIGINAL_BRANCH'.
 checkout '$ORIGINAL_BRANCH' first, then run --drop."
+  fi
 
+  # All checks passed — now delete tags
+  printf '%s\n' "$COMMIT_TAGS" | while IFS= read -r _tag; do
+    git tag -d "$_tag"
+  done
+  git tag -d "$SQUASH_ID"
+
+  # Reset branch to original tip only if not pushed
+  if [ -z "$_on_remote" ]; then
     git reset --hard "$ORIGINAL_TIP"
     echo ""
     green "done: squash dropped"
@@ -541,12 +547,14 @@ checkout '$ORIGINAL_BRANCH' first, then run --drop."
     echo "  tags deleted    : $((COMMIT_COUNT + 1))  ($COMMIT_COUNT commits + summary)"
   else
     echo ""
+    yellow "-> warning: squash commit has been pushed to remote (${_on_remote# })."
+    echo "   branch not reset — resetting would require a force push."
+    echo ""
     green "done: squash tags deleted"
     echo ""
     echo "  tags deleted : $((COMMIT_COUNT + 1))  ($COMMIT_COUNT commits + summary)"
     echo ""
-    yellow "  note: squash commit $SQUASH_SHA is still on the remote."
-    echo "  to fully revert, force push after resetting locally:"
+    echo "  to fully revert:"
     echo "    git reset --hard $ORIGINAL_TIP"
     echo "    git push --force-with-lease"
   fi
