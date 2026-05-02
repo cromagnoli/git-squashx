@@ -148,6 +148,7 @@ detect_base_branch() {
     _tip=$(git rev-parse "$_branch" 2>/dev/null) || continue
     _base_date=$(git log -1 --format="%ct" "$_base" 2>/dev/null) || continue
     _tip_date=$(git log -1 --format="%ct" "$_tip" 2>/dev/null) || continue
+    [ "$_tip_date" != "$_base_date" ] || continue  # skip frozen backup/mirror branches
     _dist=$(git log --oneline "${_base}..${_branch}" 2>/dev/null | grep -c . || true)
     printf '%s %s %05d %s\n' "$_base_date" "$_tip_date" "$_dist" "$_branch"
   done > "$_candidates"
@@ -159,7 +160,7 @@ pass it explicitly: git squashx --save <base-branch> \"message\"
 example: git squashx --save main \"feat: my feature\""
   }
 
-  # Pass 1: branches with dist=0 (tip == merge-base, i.e. direct parents)
+  # Pass 1: branches with dist=0 (tip == merge-base, i.e. direct parents).
   _direct_count=$(awk '$3 == "00000"' "$_candidates" | grep -c . || true)
 
   if [ "$_direct_count" -ge 1 ]; then
@@ -210,7 +211,7 @@ example: git squashx --save main \"feat: my feature\""
 
   # Pass 2: no dist=0 — base has moved on.
   # Pick branch with most recent merge-base timestamp.
-  _latest_base_date=$(awk '{print $1}' "$_candidates" | sort -rn | head -1)
+  _latest_base_date=$(awk '{print $1}' "$_candidates" | sort -n | head -1)
   _recent=$(awk -v d="$_latest_base_date" '$1 == d {print $4}' "$_candidates")
   _recent_count=$(printf '%s\n' "$_recent" | grep -c . || true)
 
