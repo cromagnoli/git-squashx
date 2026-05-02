@@ -2,6 +2,8 @@
 
 > Squash your commits into one for a clean rebase, without losing the originals.
 
+> ⚠️ Beta — under active development. Interface may change.
+
 When your team requires `rebase` for catchups, squashing N commits into one means resolving conflicts only once instead of N times. `squashx` does the squash and preserves every original commit as a local Git tag that never expires — so you can always inspect or restore them.
 
 ## Install
