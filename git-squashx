@@ -225,6 +225,32 @@ cmd_save() {
   echo ""
 
   SQUASH_ID="${TAG_PREFIX}/${CURRENT_BRANCH}/${TIMESTAMP}"
+
+  # Check if any of these commits were already squashed before
+  _existing_squash=""
+  printf '%s\n' "$COMMITS" | while IFS= read -r sha; do
+    _tag="${TAG_PREFIX}/commits/${CURRENT_BRANCH}/${sha}"
+    if git rev-parse --verify "refs/tags/$_tag" >/dev/null 2>&1; then
+      _group=$(git tag -l --format="%(contents)" "$_tag" \
+        | grep "^squash-group:" | awk '{print $2}' || true)
+      printf '%s\n' "$_group" > /tmp/sqhx_existing_squash
+      break
+    fi
+  done
+  _existing_squash=$(cat /tmp/sqhx_existing_squash 2>/dev/null || true)
+  rm -f /tmp/sqhx_existing_squash
+  if [ -n "$_existing_squash" ]; then
+    die "commits on '$CURRENT_BRANCH' were already squashed before.
+  existing squash: $_existing_squash
+
+did you mean to restore the originals first?
+  git squashx --restore $_existing_squash
+  git squashx --peek $_existing_squash     # inspect before restoring
+
+to re-squash anyway, delete the existing tags first:
+  git tag -d \$(git tag -l '${TAG_PREFIX}/commits/${CURRENT_BRANCH}/*')"
+  fi
+
   TAG_LIST=""
 
   printf '%s\n' "$COMMITS" | while IFS= read -r sha; do
@@ -268,9 +294,18 @@ date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '\ncustom-squash-id: %s\n' "$SQUASH_ID" >> "$SQUASH_MSG_FILE" 
 
   MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD)
+
+  STASH_RESULT=$(git stash 2>/dev/null || true)
+  case "$STASH_RESULT" in
+    *"No local changes"*) STASHED=0 ;;
+    *) STASHED=1 ;;
+  esac
+
   git reset --soft "$MERGE_BASE"
   git commit -F "$SQUASH_MSG_FILE"
   rm -f "$SQUASH_MSG_FILE"
+
+  [ "$STASHED" -eq 1 ] && git stash pop
 
   SQUASH_SHA=$(git rev-parse HEAD)
 
