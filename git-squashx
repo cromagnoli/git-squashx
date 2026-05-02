@@ -248,7 +248,7 @@ cmd_save() {
     die "commits on '$CURRENT_BRANCH' were already squashed before.
   existing squash tag: $_existing_squash
 
-to undo the squash and get your original commits back:
+to drop this squash (resets branch if not yet pushed):
   git squashx --drop $_existing_squash
 
 to inspect before deciding:
