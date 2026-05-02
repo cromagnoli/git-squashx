@@ -75,12 +75,13 @@ custom-squash-id: squash-backup/feature/login/20260501050621
 
 The `[SQ]` prefix makes squash commits easy to spot in the log. The original SHAs are embedded directly in the message — no extra commands needed.
 
-If something goes wrong after the rebase, restore the originals onto a new branch:
+If something goes wrong after the rebase, drop the squash to get back to the original commits:
 
 ```bash
-git squashx --restore   # reads squash-id from HEAD
-# creates: restore/<original-branch>/<timestamp>
+git squashx --drop      # reads squash-id from HEAD
 ```
+
+This resets the branch to the original tip and deletes all squashx tags. If the squash was already pushed to remote, the reset is skipped and only the tags are deleted — instructions for force push are shown.
 
 ## Commands
 
@@ -128,6 +129,16 @@ git squashx --restore squash-backup/...  # by squash-id tag
 ```
 
 Creates a branch named `restore/<original-branch>/<timestamp>`.
+
+### `--drop` / `-d`
+
+Undoes a squash: resets the branch to the original tip and deletes all associated tags. If the squash commit has already been pushed to a remote, only the tags are deleted and instructions for force push are shown.
+
+```bash
+git squashx --drop                       # reads squash-id from HEAD
+git squashx --drop 7b60cd2               # by squash commit SHA
+git squashx --drop squash-backup/...     # by squash-id tag
+```
 
 ### `--list` / `-l`
 
