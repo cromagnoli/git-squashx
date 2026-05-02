@@ -102,7 +102,7 @@ git squashx --save <base-branch> "feat: implement login"   # explicit base, with
 -> could not auto-detect base branch unambiguously.
    candidates (sorted by distance):
 
-   1) staging                          (11 commits ahead)
+   1) main                             (11 commits ahead)
    2) other-branch                     (18 commits ahead)
 
 error: pass it explicitly: git squashx --save <base-branch> "message"
