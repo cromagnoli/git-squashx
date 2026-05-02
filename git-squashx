@@ -215,16 +215,6 @@ cmd_save() {
   [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ] \
     || die "you are already on '$BASE_BRANCH'. checkout your feature branch first."
 
-  # Check if branch is up to date with base (i.e. has been rebased)
-  BEHIND=$(git log "HEAD..${BASE_BRANCH}" --oneline 2>/dev/null | grep -c . || true)
-  if [ "$BEHIND" -gt 0 ]; then
-    die "your branch is not up to date with '$BASE_BRANCH'.
-'$BASE_BRANCH' has $BEHIND commit(s) that are not in your branch.
-rebase first, then squash:
-  git rebase $BASE_BRANCH
-  git squashx --save \"your message\""
-  fi
-
   COMMITS=$(git log --reverse --format="%H" "$BASE_BRANCH"..HEAD)
   COMMIT_COUNT=$(printf '%s\n' "$COMMITS" | grep -c . || true)
 
@@ -298,7 +288,7 @@ original-tags: $TAG_LIST"
   echo "  originals  : $COMMIT_COUNT commits preserved as local tags"
   echo ""
   yellow "next steps:"
-  printf "  git rebase %s\n" "$BASE_BRANCH   # catchup with $BASE_BRANCH"
+  printf "  git rebase %s\n" "$BASE_BRANCH   # rebase onto $BASE_BRANCH"
   echo "  git squashx --peek $SQUASH_SHA       # inspect original commits"
 }
 
