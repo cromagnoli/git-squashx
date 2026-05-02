@@ -43,7 +43,7 @@ curl -sSL https://raw.githubusercontent.com/cromagnoli/git-squashx/main/git-squa
 
 ```
 # Your feature branch before squashing
-git log --oneline staging..HEAD
+git log --oneline <base-branch>..HEAD
 # a6892db fix edge case in parser
 # 5e1ef0c add form validation
 # cbb603a implement login form
@@ -51,10 +51,10 @@ git log --oneline staging..HEAD
 
 ```bash
 # 1. Squash — originals are preserved as local tags
-git squashx --save staging "feat: implement login"
+git squashx --save "feat: implement login"
 
 # 2. Rebase — at most one conflict now, not N
-git rebase staging
+git rebase <base-branch>
 
 # 3. Push
 git push --force-with-lease
@@ -90,10 +90,10 @@ This resets the branch to the original tip and deletes all squashx tags. If the 
 Squashes all commits between `base-branch` and `HEAD` into one, tagging each original commit locally.
 
 ```bash
-git squashx --save                                  # auto-detect base, no message
-git squashx --save "feat: implement login"          # auto-detect base, with message
-git squashx --save staging                          # explicit base, no message
-git squashx --save staging "feat: implement login"  # explicit base, with message
+git squashx --save                                         # auto-detect base, no message
+git squashx --save "feat: implement login"                 # auto-detect base, with message
+git squashx --save <base-branch>                           # explicit base, no message
+git squashx --save <base-branch> "feat: implement login"   # explicit base, with message
 ```
 
 **Base branch auto-detection** looks for a branch whose tip is the exact divergence point of your branch. If exactly one such branch is found, it's used automatically. If the situation is ambiguous, `squashx` lists the candidates and asks you to pass the base explicitly:
