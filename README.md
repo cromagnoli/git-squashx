@@ -1,20 +1,8 @@
-# Git-squashx — squash with memory
+# git-squashx — squash with memory
 
 > Squash your commits into one for a clean rebase, without losing the originals.
 
 When your team requires `rebase` for catchups, squashing N commits into one means resolving conflicts only once instead of N times. `squashx` does the squash and preserves every original commit as a local Git tag that never expires — so you can always inspect or restore them.
-
-## Compatibility
-
-| Platform | Supported |
-|---|---|
-| Linux | ✅ bash |
-| macOS | ✅ bash, zsh |
-| Windows | ✅ Git Bash |
-
-> **macOS note:** macOS ships with bash 3.x. `git-squashx` is compatible with bash 3, but bash 4+ is recommended. To upgrade: `brew install bash`.
-
-> **Windows note:** requires [Git for Windows](https://git-scm.com/download/win), which includes Git Bash.
 
 ## Install
 
@@ -32,53 +20,50 @@ The installer detects your platform and shell and places the script in the right
 | macOS (without sudo) | `~/.local/bin` |
 | Windows Git Bash | `~/bin` |
 
-If the install directory is not in your `$PATH`, the installer will tell you exactly what to add to your `.bashrc`, `.zshrc`, or `.bash_profile`.
+If the install directory is not in your `$PATH`, the installer will tell you exactly what to add to your shell config.
 
 **Manual install:**
 
 ```bash
-# Linux / macOS
 curl -sSL https://raw.githubusercontent.com/cromagnoli/git-squashx/main/git-squashx \
-  -o /usr/local/bin/git-squashx && chmod +x /usr/local/bin/git-squashx
-
-# Windows Git Bash
-curl -sSL https://raw.githubusercontent.com/cromagnoli/git-squashx/main/git-squashx \
-  -o ~/bin/git-squashx && chmod +x ~/bin/git-squashx
+  -o ~/.local/bin/git-squashx && chmod +x ~/.local/bin/git-squashx
 ```
 
-## Usage
+## Compatibility
 
-```bash
-git squashx --save    [base-branch] ["message"]   # -s
-git squashx --peek    [squash-id | sha]            # -p
-git squashx --restore [squash-id | sha]            # -r
-git squashx --list    [--branch <name>]            # -l
-git squashx --help                                 # -h
-```
+| Platform | Status |
+|---|---|
+| macOS | ✅ bash, zsh |
+| Linux | ✅ bash |
+| Windows Git Bash | ✅ |
+
+> **Windows:** requires [Git for Windows](https://git-scm.com/download/win).
 
 ## Workflow
 
-```bash
-# Illustrative — your commits might look like this
-git log --oneline main..HEAD
+```
+# Your feature branch before squashing
+git log --oneline staging..HEAD
 # a6892db fix edge case in parser
 # 5e1ef0c add form validation
 # cbb603a implement login form
+```
 
-# 1. Squash and preserve originals
-git squashx --save "feat: implement login feature"
+```bash
+# 1. Squash — originals are preserved as local tags
+git squashx --save staging "feat: implement login"
 
-# 2. Catchup — only one conflict to resolve if any
-git rebase main
+# 2. Rebase — at most one conflict now, not N
+git rebase staging
 
-# 3. Push normally
+# 3. Push
 git push --force-with-lease
 ```
 
-The resulting squash commit message looks like this:
+The squash commit message:
 
 ```
-[SQ] feat: implement login feature
+[SQ] feat: implement login
 
 Original commits:
 - cbb603a: implement login form
@@ -88,46 +73,58 @@ Original commits:
 custom-squash-id: squash-backup/feature/login/20260501050621
 ```
 
-The `[SQ]` tag makes squash commits immediately recognizable in the log. The original SHAs are right there so you can reference them without running any command. The `custom-squash-id` at the bottom is local metadata used by `squashx` — it's not a native Git field.
+The `[SQ]` prefix makes squash commits easy to spot in the log. The original SHAs are embedded directly in the message — no extra commands needed.
+
+If something goes wrong after the rebase, restore the originals onto a new branch:
+
+```bash
+git squashx --restore   # reads squash-id from HEAD
+# creates: restore/<original-branch>/<timestamp>
+```
 
 ## Commands
 
 ### `--save` / `-s`
 
-Squashes all commits between `base-branch` and `HEAD` into one, and tags each original commit locally.
-
-The base branch is resolved in this order:
-1. The explicit argument you pass
-2. The upstream tracking branch of your current branch (`@{upstream}`)
-3. Error with a clear message if neither is available
+Squashes all commits between `base-branch` and `HEAD` into one, tagging each original commit locally.
 
 ```bash
-git squashx --save                                  # Auto-detects base branch, no message
-git squashx --save "feat: implement login"          # Auto-detects base branch, with message
-git squashx --save main                             # Explicit base, no message
-git squashx --save main "feat: implement login"     # Explicit base, with message
+git squashx --save                                  # auto-detect base, no message
+git squashx --save "feat: implement login"          # auto-detect base, with message
+git squashx --save staging                          # explicit base, no message
+git squashx --save staging "feat: implement login"  # explicit base, with message
 ```
 
-If your branch has no upstream configured and you don't pass a base branch explicitly, `squashx` will exit with a clear error and tell you what to do.
+**Base branch auto-detection** looks for a branch whose tip is the exact divergence point of your branch. If exactly one such branch is found, it's used automatically. If the situation is ambiguous, `squashx` lists the candidates and asks you to pass the base explicitly:
+
+```
+-> could not auto-detect base branch unambiguously.
+   candidates (sorted by distance):
+
+   1) staging                          (11 commits ahead)
+   2) other-branch                     (18 commits ahead)
+
+error: pass it explicitly: git squashx --save <base-branch> "message"
+```
 
 ### `--peek` / `-p`
 
 Shows the original commits of a squash: message, author, date, and diff stat.
 
 ```bash
-git squashx --peek                       # Reads squash-id from HEAD
-git squashx --peek 7b60cd2               # By squash commit SHA
-git squashx --peek squash-backup/...     # By squash-id tag
+git squashx --peek                       # reads squash-id from HEAD
+git squashx --peek 7b60cd2               # by squash commit SHA
+git squashx --peek squash-backup/...     # by squash-id tag
 ```
 
 ### `--restore` / `-r`
 
-Recreates the original commits as a new branch by cherry-picking them in order onto `base-branch`.
+Recreates the original commits as a new branch by cherry-picking them in order onto the recorded base branch.
 
 ```bash
-git squashx --restore                    # Reads squash-id from HEAD
-git squashx --restore 7b60cd2            # By squash commit SHA
-git squashx --restore squash-backup/...  # By squash-id tag
+git squashx --restore                    # reads squash-id from HEAD
+git squashx --restore 7b60cd2            # by squash commit SHA
+git squashx --restore squash-backup/...  # by squash-id tag
 ```
 
 Creates a branch named `restore/<original-branch>/<timestamp>`.
@@ -143,23 +140,25 @@ git squashx --list --branch feature/login
 
 ## How tags work
 
-Each squash creates:
+Each `--save` creates:
 - One tag per original commit: `squash-backup/commits/<branch>/<sha>`
-- One tag for the squash itself: `squash-backup/<branch>/<timestamp>`
+- One summary tag: `squash-backup/<branch>/<timestamp>`
 
-Tags are **local by default** and never expire — Git's garbage collector won't remove objects that are reachable from a tag. A `git push` does **not** upload them unless you do so explicitly:
+Tags are **local by default** and never expire — Git's garbage collector won't remove objects reachable from a tag. Push them explicitly if you want a remote backup:
 
 ```bash
-# Share a specific squash with a teammate
-git push origin refs/tags/squash-backup/feature/login/...
+git push origin refs/tags/squash-backup/feature/login/20260501050621
+```
 
-# See only squashx tags
+To list all squashx tags:
+
+```bash
 git tag -l "squash-backup/*"
 ```
 
 ## Requirements
 
-- Bash 4+
+- Bash 3.x+ (Bash 4+ recommended on macOS — `brew install bash`)
 - Git 2.x
 
 ## License

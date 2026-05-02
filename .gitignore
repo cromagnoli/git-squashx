@@ -1,0 +1,23 @@
+# editors
+.idea
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# environment
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# dependencies
+node_modules/
+vendor/
