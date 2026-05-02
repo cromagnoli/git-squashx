@@ -130,122 +130,51 @@ find_commit_tags_for() {
 detect_base_branch() {
   _current="$1"
   _candidates=$(mktemp)
-  _winner_file=$(mktemp)
 
-  # For each local branch (except current), build a candidates row:
-  #   base_date  tip_date  dist(zero-padded)  branch_name
-  #
-  # Strategy:
-  #   Pass 1 — dist=0 means branch tip IS the merge-base (direct parent).
-  #             Among those, pick the one that is a descendant of all others
-  #             (e.g. staging over master, since staging contains master's commits).
-  #   Pass 2 — no dist=0: base has moved on. Pick the branch whose merge-base
-  #             has the most recent timestamp (most recently diverged from HEAD).
-  #   Ambiguous — show candidates and die asking the user to pass explicitly.
-
+  # Build candidates: base_date  tip_date  dist(zero-padded)  branch_name
+  # Skip frozen backup/mirror branches (tip_date == base_date).
   git branch --format='%(refname:short)' | grep -v "^${_current}$" | while IFS= read -r _branch; do
     _base=$(git merge-base HEAD "$_branch" 2>/dev/null) || continue
     _tip=$(git rev-parse "$_branch" 2>/dev/null) || continue
     _base_date=$(git log -1 --format="%ct" "$_base" 2>/dev/null) || continue
     _tip_date=$(git log -1 --format="%ct" "$_tip" 2>/dev/null) || continue
-    [ "$_tip_date" != "$_base_date" ] || continue  # skip frozen backup/mirror branches
+    [ "$_tip_date" != "$_base_date" ] || continue
     _dist=$(git log --oneline "${_base}..${_branch}" 2>/dev/null | grep -c . || true)
     printf '%s %s %05d %s\n' "$_base_date" "$_tip_date" "$_dist" "$_branch"
   done > "$_candidates"
 
   [ -s "$_candidates" ] || {
-    rm -f "$_candidates" "$_winner_file"
+    rm -f "$_candidates"
     die "could not detect base branch automatically.
 pass it explicitly: git squashx --save <base-branch> \"message\"
 example: git squashx --save main \"feat: my feature\""
   }
 
-  # Pass 1: branches with dist=0 (tip == merge-base, i.e. direct parents).
+  # Pass 1: exactly one dist=0 candidate → unambiguous direct parent, pick it.
   _direct_count=$(awk '$3 == "00000"' "$_candidates" | grep -c . || true)
-
-  if [ "$_direct_count" -ge 1 ]; then
-    if [ "$_direct_count" -eq 1 ]; then
-      _result=$(awk '$3 == "00000" {print $4}' "$_candidates")
-      rm -f "$_candidates" "$_winner_file"
-      blue "-> detected base branch: $_result" >&2
-      echo "$_result"
-      return
-    fi
-
-    # Multiple dist=0: pick the one that is a descendant of all others.
-    # Use file redirects (not pipes) so _is_winner assignment is not lost in a subshell.
-    _direct_file=$(mktemp)
-    awk '$3 == "00000" {print $4}' "$_candidates" > "$_direct_file"
-
-    while IFS= read -r _b; do
-      _is_winner=1
-      while IFS= read -r _other; do
-        [ "$_other" = "$_b" ] && continue
-        if ! git merge-base --is-ancestor "$_other" "$_b" 2>/dev/null; then
-          _is_winner=0
-          break
-        fi
-      done < "$_direct_file"
-      if [ "$_is_winner" -eq 1 ]; then
-        echo "$_b" > "$_winner_file"
-        break
-      fi
-    done < "$_direct_file"
-
-    rm -f "$_direct_file"
-
-    if [ -s "$_winner_file" ]; then
-      _winner=$(cat "$_winner_file")
-      rm -f "$_candidates" "$_winner_file"
-      blue "-> detected base branch: $_winner" >&2
-      echo "$_winner"
-      return
-    fi
-
-    rm -f "$_winner_file"
-    _list=$(awk '$3 == "00000" {print $4}' "$_candidates")
+  if [ "$_direct_count" -eq 1 ]; then
+    _result=$(awk '$3 == "00000" {print $4}' "$_candidates")
     rm -f "$_candidates"
-    _ask_user "$_list" "multiple branches point to the same divergence commit"
+    blue "-> detected base branch: $_result" >&2
+    echo "$_result"
     return
   fi
 
-  # Pass 2: no dist=0 — base has moved on.
-  # Pick branch with most recent merge-base timestamp.
-  _latest_base_date=$(awk '{print $1}' "$_candidates" | sort -n | head -1)
-  _recent=$(awk -v d="$_latest_base_date" '$1 == d {print $4}' "$_candidates")
-  _recent_count=$(printf '%s\n' "$_recent" | grep -c . || true)
-
-  if [ "$_recent_count" -eq 1 ]; then
-    rm -f "$_candidates" "$_winner_file"
-    blue "-> detected base branch: $_recent" >&2
-    echo "$_recent"
-    return
-  fi
-
-  rm -f "$_candidates" "$_winner_file"
-  _ask_user "$_recent" "multiple branches diverged at the same point"
-}
-
-# Show candidates and exit asking user to choose explicitly.
-_ask_user() {
-  _list="$1"
-  _reason="$2"
-  printf '
-' >&2
-  yellow "-> could not auto-detect base branch: $_reason." >&2
-  echo "   pass it explicitly or choose from the candidates below:" >&2
-  printf '
-' >&2
+  # Ambiguous — show all candidates sorted by dist ascending and ask user to choose.
+  printf '\n' >&2
+  yellow "-> could not auto-detect base branch unambiguously." >&2
+  echo "   candidates (sorted by distance):" >&2
+  printf '\n' >&2
   _i=1
-  printf '%s
-' "$_list" | while IFS= read -r _b; do
-    printf '   %d) %s
-' "$_i" "$_b" >&2
+  sort -k3 -n "$_candidates" | while IFS= read -r _line; do
+    _dist_n=$(printf '%s' "$_line" | awk '{print $3 + 0}')
+    _name=$(printf '%s' "$_line" | awk '{print $4}')
+    printf '   %d) %-40s (%d commits ahead)\n' "$_i" "$_name" "$_dist_n" >&2
     _i=$((_i + 1))
   done
-  printf '
-' >&2
-  die "pass the base branch explicitly: git squashx --save <base-branch> \"message\""
+  printf '\n' >&2
+  rm -f "$_candidates"
+  die "pass it explicitly: git squashx --save <base-branch> \"message\""
 }
 
 # ── save ──────────────────────────────────────────────────────────────────────
