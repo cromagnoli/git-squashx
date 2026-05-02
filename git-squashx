@@ -12,6 +12,7 @@
 #   git squashx --save    [base-branch] ["message"]   (-s)
 #   git squashx --peek    [squash-id | sha]            (-p)
 #   git squashx --restore [squash-id | sha]            (-r)
+#   git squashx --drop    [squash-id | sha]            (-d)
 #   git squashx --list    [--branch name]              (-l)
 #   git squashx --help                                 (-h)
 
@@ -47,6 +48,7 @@ cmd_help() {
   echo "  git squashx --save    [base-branch] [\"message\"]"
   echo "  git squashx --peek    [squash-id | sha]"
   echo "  git squashx --restore [squash-id | sha]"
+  echo "  git squashx --drop    [squash-id | sha]"
   echo "  git squashx --list    [--branch <name>]"
   echo "  git squashx --help"
   echo ""
@@ -55,6 +57,7 @@ cmd_help() {
   printf "  %-20s %s\n" "--save,    -s" "squash commits and tag originals (auto-detects base branch)"
   printf "  %-20s %s\n" "--peek,    -p" "inspect original commits of a squash"
   printf "  %-20s %s\n" "--restore, -r" "recreate original commits as a new branch"
+  printf "  %-20s %s\n" "--drop,    -d" "undo a squash: reset branch + delete tags (warns if pushed)"
   printf "  %-20s %s\n" "--list,    -l" "list all saved squashes"
   printf "  %-20s %s\n" "--help,    -h" "show this help"
   echo ""
@@ -66,6 +69,8 @@ cmd_help() {
   echo "  git squashx --peek                                   # peeks at HEAD squash"
   echo "  git squashx --peek 7b60cd2                          # peek by SHA"
   echo "  git squashx --restore 7b60cd2                       # restore by SHA"
+  echo "  git squashx --drop                                   # undo squash at HEAD"
+  echo "  git squashx --drop 7b60cd2                          # undo squash by SHA"
   echo "  git squashx --list --branch feature/login"
   echo ""
   bold "commit message format:"
@@ -243,12 +248,11 @@ cmd_save() {
     die "commits on '$CURRENT_BRANCH' were already squashed before.
   existing squash tag: $_existing_squash
 
-did you mean to restore the originals first?
-  git squashx --restore $_existing_squash
-  git squashx --peek $_existing_squash     # inspect before restoring
+to undo the squash and get your original commits back:
+  git squashx --drop $_existing_squash
 
-to re-squash anyway, delete the existing tags first:
-  git tag -d \$(git tag -l '${TAG_PREFIX}/commits/${CURRENT_BRANCH}/*')"
+to inspect before deciding:
+  git squashx --peek $_existing_squash"
   fi
 
   TAG_LIST=""
@@ -308,11 +312,13 @@ date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   [ "$STASHED" -eq 1 ] && git stash pop
 
   SQUASH_SHA=$(git rev-parse HEAD)
+  ORIGINAL_TIP=$(printf '%s\n' "$COMMITS" | tail -1)
 
   git tag -a "${SQUASH_ID}" "$SQUASH_SHA" -m "squash commit: $SQUASH_SHA
 branch: $CURRENT_BRANCH
 base: $BASE_BRANCH
 original-count: $COMMIT_COUNT
+original-tip: $ORIGINAL_TIP
 original-tags: $TAG_LIST"
 
   echo ""
@@ -469,12 +475,80 @@ cmd_list() {
     echo ""
     dim "    git squashx --peek $tag"
     dim "    git squashx --restore $tag"
+    dim "    git squashx --drop $tag"
     echo ""
   done
 
   if [ "$COUNT" -eq 0 ] && [ -n "$FILTER_BRANCH" ]; then
     dim "  no squashes found for branch '$FILTER_BRANCH'"
     echo ""
+  fi
+}
+
+# ── drop ──────────────────────────────────────────────────────────────────────
+
+cmd_drop() {
+  SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
+
+  git rev-parse --verify "refs/tags/$SQUASH_ID" >/dev/null 2>&1 \
+    || die "squash tag not found: $SQUASH_ID
+run 'git squashx --list' to see all saved squashes."
+
+  CONTENTS=$(git tag -l --format="%(contents)" "$SQUASH_ID")
+  SQUASH_SHA=$(printf '%s\n' "$CONTENTS" | grep "^squash commit:" | awk '{print $3}' || true)
+  ORIGINAL_TIP=$(printf '%s\n' "$CONTENTS" | grep "^original-tip:" | awk '{print $2}' || true)
+  ORIGINAL_BRANCH=$(printf '%s\n' "$CONTENTS" | grep "^branch:" | awk '{print $2}' || true)
+
+  [ -n "$SQUASH_SHA" ]      || die "could not read squash commit SHA from tag metadata"
+  [ -n "$ORIGINAL_BRANCH" ] || die "could not read branch from tag metadata"
+
+  COMMIT_TAGS=$(find_commit_tags_for "$SQUASH_ID")
+  COMMIT_COUNT=$(printf '%s\n' "$COMMIT_TAGS" | grep -c . || true)
+
+  # Check if squash commit has been pushed to any remote
+  _on_remote=$(git branch -r --contains "$SQUASH_SHA" 2>/dev/null | head -1 || true)
+
+  if [ -n "$_on_remote" ]; then
+    yellow "-> warning: squash commit has been pushed to remote (${_on_remote# })." >&2
+    echo "   resetting the branch would require a force push — skipping reset." >&2
+    echo "   deleting local tags only." >&2
+    echo ""
+  fi
+
+  # Delete per-commit tags
+  printf '%s\n' "$COMMIT_TAGS" | while IFS= read -r _tag; do
+    git tag -d "$_tag"
+  done
+
+  # Delete summary tag
+  git tag -d "$SQUASH_ID"
+
+  # Reset branch to original tip only if not pushed
+  if [ -z "$_on_remote" ]; then
+    [ -n "$ORIGINAL_TIP" ] || die "original-tip not found in tag metadata.
+this squash was created with an older version of squashx — use --restore instead."
+
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    [ "$CURRENT_BRANCH" = "$ORIGINAL_BRANCH" ] \
+      || die "you are on '$CURRENT_BRANCH', but this squash belongs to '$ORIGINAL_BRANCH'.
+checkout '$ORIGINAL_BRANCH' first, then run --drop."
+
+    git reset --hard "$ORIGINAL_TIP"
+    echo ""
+    green "done: squash dropped"
+    echo ""
+    echo "  branch reset to : $ORIGINAL_TIP"
+    echo "  tags deleted    : $((COMMIT_COUNT + 1))  ($COMMIT_COUNT commits + summary)"
+  else
+    echo ""
+    green "done: squash tags deleted"
+    echo ""
+    echo "  tags deleted : $((COMMIT_COUNT + 1))  ($COMMIT_COUNT commits + summary)"
+    echo ""
+    yellow "  note: squash commit $SQUASH_SHA is still on the remote."
+    echo "  to fully revert, force push after resetting locally:"
+    echo "    git reset --hard $ORIGINAL_TIP"
+    echo "    git push --force-with-lease"
   fi
 }
 
@@ -486,6 +560,7 @@ case "$CMD" in
   --save    | -s) shift; cmd_save    "$@" ;;
   --peek    | -p) shift; cmd_peek    "${1:-}" ;;
   --restore | -r) shift; cmd_restore "${1:-}" ;;
+  --drop    | -d) shift; cmd_drop    "${1:-}" ;;
   --list    | -l)
     shift
     BRANCH_FILTER=""
