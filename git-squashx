@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# git-squashx — squash with memory
+# git-squashx — Squash with memory
 #
 # Squashes your commits into one and preserves the originals as local
 # tags that never expire, so you can always inspect or restore them.
@@ -9,7 +9,7 @@
 # License: MIT
 #
 # Usage:
-#   git squashx --save    [base-branch] ["message"]   (-s)
+#   git squashx --save    [base-branch] ["message"]    (-s)
 #   git squashx --peek    [squash-id | sha]            (-p)
 #   git squashx --restore [squash-id | sha]            (-r)
 #   git squashx --drop    [squash-id | sha]            (-d)
@@ -20,9 +20,9 @@ set -eu
 
 TAG_PREFIX="squash-backup"
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-# Printf-based color helpers (POSIX safe, no echo -e)
+# printf-based color helpers (POSIX safe, no echo -e)
 red()    { printf "\033[0;31m%s\033[0m\n" "$*"; }
 green()  { printf "\033[0;32m%s\033[0m\n" "$*"; }
 yellow() { printf "\033[0;33m%s\033[0m\n" "$*"; }
@@ -31,14 +31,14 @@ bold()   { printf "\033[1m%s\033[0m\n" "$*"; }
 dim()    { printf "\033[2m%s\033[0m\n" "$*"; }
 
 die() {
-  red "error: $*" >&2
+  red "Error: $*" >&2
   exit 1
 }
 
-# ── help ──────────────────────────────────────────────────────────────────────
+# ── Help ──────────────────────────────────────────────────────────────────────
 
 cmd_help() {
-  bold "git squashx — squash with memory"
+  bold "git squashx — Squash with memory"
   echo ""
   echo "  Squashes your commits into one and preserves the originals as local"
   echo "  tags that never expire, so you can always inspect or restore them."
@@ -54,17 +54,17 @@ cmd_help() {
   echo ""
   bold "Options:"
   echo ""
-  printf "  %-20s %s\n" "--save,    -s" "Squash commits and tag originals (auto-detects base branch)"
+  printf "  %-20s %s\n" "--save,    -s" "Squash commits and tag originals (Auto-detects base branch)"
   printf "  %-20s %s\n" "--peek,    -p" "Inspect original commits of a squash"
   printf "  %-20s %s\n" "--restore, -r" "Recreate original commits as a new branch"
-  printf "  %-20s %s\n" "--drop,    -d" "Undo a squash: reset branch + delete tags (warns if pushed)"
+  printf "  %-20s %s\n" "--drop,    -d" "Undo a squash: reset branch + delete tags (Warns if pushed)"
   printf "  %-20s %s\n" "--list,    -l" "List all saved squashes"
   printf "  %-20s %s\n" "--help,    -h" "Show this help"
   echo ""
   bold "Examples:"
   echo ""
-  echo "  git squashx --save \"feat: implement login\"          # Auto-detects base branch"
-  echo "  git squashx --save main \"feat: implement login\"     # Explicit base branch"
+  echo "  git squashx --save \"Feat: Implement login\"          # Auto-detects base branch"
+  echo "  git squashx --save main \"Feat: Implement login\"     # Explicit base branch"
   echo "  git squashx --save                                   # Auto-detects, no message"
   echo "  git squashx --peek                                   # Peeks at HEAD squash"
   echo "  git squashx --peek 7b60cd2                          # Peek by SHA"
@@ -83,7 +83,7 @@ cmd_help() {
   echo ""
 }
 
-# ── shared: resolve squash-id from SHA or tag ─────────────────────────────────
+# ── Shared: resolve squash-id from SHA or tag ─────────────────────────────────
 
 resolve_squash_id_from_commit() {
   # custom-squash-id can appear anywhere in the commit message
@@ -130,7 +130,7 @@ find_commit_tags_for() {
   done
 }
 
-# ── base branch detection ─────────────────────────────────────────────────────
+# ── Base branch detection ─────────────────────────────────────────────────────
 
 detect_base_branch() {
   _current="$1"
@@ -152,7 +152,7 @@ detect_base_branch() {
     rm -f "$_candidates"
     die "Could not detect base branch automatically.
 Pass it explicitly: git squashx --save <base-branch> \"message\"
-Example: git squashx --save main \"feat: my feature\""
+Example: git squashx --save main \"Feat: My feature\""
   }
 
   # Pass 1: exactly one dist=0 candidate → unambiguous direct parent, pick it.
@@ -182,7 +182,7 @@ Example: git squashx --save main \"feat: my feature\""
   die "Pass it explicitly: git squashx --save <base-branch> \"message\""
 }
 
-# ── save ──────────────────────────────────────────────────────────────────────
+# ── Save ──────────────────────────────────────────────────────────────────────
 
 cmd_save() {
   # Argument parsing:
@@ -190,10 +190,10 @@ cmd_save() {
   # If $1 has spaces (or is absent), treat it as the message and auto-detect base.
   #
   # Valid call forms:
-  #   --save                             auto-detect base, no message
-  #   --save "feat: my message"          auto-detect base, with message
-  #   --save main                        explicit base, no message
-  #   --save main "feat: my message"     explicit base, with message
+  #   --save                             Auto-detect base, no message
+  #   --save "Feat: My message"          Auto-detect base, with message
+  #   --save main                        Explicit base, no message
+  #   --save main "Feat: My message"     Explicit base, with message
   if [ -n "${1:-}" ] && [ "${1#* }" = "$1" ]; then
     BASE_BRANCH="$1"
     CUSTOM_MSG="${2:-}"
@@ -333,7 +333,7 @@ original-tags: $TAG_LIST"
   echo "  git squashx --peek $SQUASH_SHA       # Inspect original commits"
 }
 
-# ── peek ──────────────────────────────────────────────────────────────────────
+# ── Peek ──────────────────────────────────────────────────────────────────────
 
 cmd_peek() {
   SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
@@ -376,7 +376,7 @@ Run 'git squashx --list' to see all saved squashes."
   echo "  git show <sha>"
 }
 
-# ── restore ───────────────────────────────────────────────────────────────────
+# ── Restore ───────────────────────────────────────────────────────────────────
 
 cmd_restore() {
   SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
@@ -436,7 +436,7 @@ cmd_restore() {
   echo "  git checkout $ORIGINAL_BRANCH"
 }
 
-# ── list ──────────────────────────────────────────────────────────────────────
+# ── List ──────────────────────────────────────────────────────────────────────
 
 cmd_list() {
   FILTER_BRANCH="${1:-}"
@@ -485,7 +485,7 @@ cmd_list() {
   fi
 }
 
-# ── drop ──────────────────────────────────────────────────────────────────────
+# ── Drop ──────────────────────────────────────────────────────────────────────
 
 cmd_drop() {
   SQUASH_ID=$(resolve_squash_id_or_head "${1:-}")
@@ -560,7 +560,7 @@ Checkout '$ORIGINAL_BRANCH' first, then run --drop."
   fi
 }
 
-# ── entrypoint ────────────────────────────────────────────────────────────────
+# ── Entrypoint ────────────────────────────────────────────────────────────────
 
 CMD="${1:-}"
 
